@@ -1,0 +1,46 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Add Kubernetes APT repository
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+      apt_repository:
+        repo: deb http://apt.kubernetes.io/ kubernetes-xenial main
+
+    - name: Install Kubernetes
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        update_cache: yes
+
+- hosts: master
+  become: yes
+  tasks:
+    - name: Initialize Kubernetes master
+      command: kubeadm init --pod-network-cidr=192.168.0.0/16
+
+    - name: Set up kubeconfig for master
+      command: "{{ item }}"
+      with_items:
+        - mkdir -p $HOME/.kube
+        - cp /etc/kubernetes/admin.conf $HOME/.kube/config
+        - chown $(id -u):$(id -g) $HOME/.kube/config
+
+    - name: Install Calico network
+      command: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+
+- hosts: workers
+  become: yes
+  tasks:
+    - name: Join Kubernetes cluster
+      command: kubeadm join --token <token> <master_ip>:6443 --discovery-token-ca-cert-hash sha256:<hash>
